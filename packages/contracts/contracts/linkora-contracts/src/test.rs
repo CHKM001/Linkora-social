@@ -1291,11 +1291,11 @@ fn test_get_followers_bumps_followers_key() {
 
     let contract_id = client.address.clone();
 
-    // StorageKey::Followers(alice) must have a bumped TTL
+    // StorageKey::FollowersIdx(alice, 0) must have a bumped TTL
     let followers_ttl = env.as_contract(&contract_id, || {
         env.storage()
             .persistent()
-            .get_ttl(&StorageKey::Followers(alice.clone()))
+            .get_ttl(&StorageKey::FollowersIdx(alice.clone(), 0))
     });
     assert!(
         followers_ttl >= LEDGER_THRESHOLD,
