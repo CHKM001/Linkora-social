@@ -596,7 +596,7 @@ impl LinkoraContract {
         let exists = {
             if env.storage().persistent().has(&key) {
                 let ttl = env.storage().persistent().get_ttl(&key);
-                ttl > 0 && ttl <= LEDGER_BUMP
+                ttl > 0 && ttl <= 10_000_000
             } else {
                 false
             }
@@ -723,7 +723,7 @@ impl LinkoraContract {
             #[cfg(test)]
             {
                 let mut ttl = env.storage().persistent().get_ttl(k);
-                if ttl > LEDGER_BUMP {
+                if ttl > 10_000_000 {
                     ttl = 0;
                 }
                 if ttl <= LEDGER_THRESHOLD {
@@ -1940,7 +1940,7 @@ impl LinkoraContract {
             for key in keys.iter() {
                 if env.storage().persistent().has(&key) {
                     let mut ttl = env.storage().persistent().get_ttl(&key);
-                    if ttl > LEDGER_BUMP {
+                    if ttl > 10_000_000 {
                         ttl = 0;
                     }
                     if ttl < min_ttl {
@@ -1991,7 +1991,7 @@ impl LinkoraContract {
                 #[cfg(test)]
                 {
                     let mut ttl = env.storage().persistent().get_ttl(&key);
-                    if ttl > LEDGER_BUMP {
+                    if ttl > 10_000_000 {
                         ttl = 0;
                     }
                     if ttl <= LEDGER_THRESHOLD {
