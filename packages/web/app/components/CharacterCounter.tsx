@@ -1,5 +1,7 @@
 "use client";
 
+// Exported CharacterCounter component for ComposeModal
+
 interface CharacterCounterProps {
   contentLength: number;
   maxLength: number;
