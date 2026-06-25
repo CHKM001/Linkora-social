@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { PostCard, Post } from "../../components/PostCard";
 import { TipModal } from "../../components/TipModal";
-import { ProfileHeader } from "../../components/ProfileHeader";
+import { AnalyticsCard } from "../../components/AnalyticsCard";
 
 // In a real app this comes from a wallet context / auth hook.
 const MOCK_CURRENT_USER = "";
@@ -19,7 +19,63 @@ interface Profile {
 
 type FollowState = "not_following" | "following" | "loading" | "blocked";
 
-// ProfilePage component definition starts here
+function formatAddress(addr: string) {
+  if (addr.length < 12) return addr;
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}
+      style={styles.copyBtn}
+      aria-label="Copy address"
+    >
+      {copied ? "✓" : "⎘"}
+    </button>
+  );
+}
+
+function FollowButton({ state, onFollow, onUnfollow }: { state: FollowState; onFollow: () => void; onUnfollow: () => void }) {
+  if (state === "blocked") return <button disabled style={{ ...styles.followBtn, ...styles.blockedBtn }}>Blocked</button>;
+  if (state === "loading") return <button disabled style={{ ...styles.followBtn, ...styles.loadingBtn }}><span style={styles.spinner} /></button>;
+  if (state === "following") return (
+    <button onClick={onUnfollow} style={{ ...styles.followBtn, ...styles.followingBtn }}
+      onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).textContent = "Unfollow")}
+      onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).textContent = "Following")}
+    >Following</button>
+  );
+  return <button onClick={onFollow} style={styles.followBtn}>Follow</button>;
+}
+
+function ProfileHeader({ address, username, creatorToken, followerCount, followingCount, isOwnProfile, followState, onFollow, onUnfollow }: {
+  address: string; username: string; creatorToken: string;
+  followerCount: number; followingCount: number; isOwnProfile: boolean;
+  followState: FollowState; onFollow: () => void; onUnfollow: () => void;
+}) {
+  return (
+    <section style={styles.header}>
+      <div style={styles.avatarLg} aria-hidden="true" />
+      <div style={styles.meta}>
+        <div style={styles.usernameRow}>
+          <h1 style={styles.username}>@{username}</h1>
+          {isOwnProfile && <a href={`/profile/${address}/edit`} style={styles.editLink}>Edit profile</a>}
+        </div>
+        <div style={styles.addressRow}>
+          <code style={styles.address}>{formatAddress(address)}</code>
+          <CopyButton text={address} />
+        </div>
+        <span style={styles.badge} title={creatorToken}>🪙 {formatAddress(creatorToken)}</span>
+        <div style={styles.statsRow}>
+          <span style={styles.stat}><strong>{followerCount}</strong><span style={styles.statLabel}> Followers</span></span>
+          <span style={styles.stat}><strong>{followingCount}</strong><span style={styles.statLabel}> Following</span></span>
+        </div>
+      </div>
+      {!isOwnProfile && <div style={styles.actions}><FollowButton state={followState} onFollow={onFollow} onUnfollow={onUnfollow} /></div>}
+    </section>
+  );
+}
 
 export default function ProfilePage() {
   const params = useParams();
@@ -149,6 +205,9 @@ export default function ProfilePage() {
         onFollow={handleFollow}
         onUnfollow={handleUnfollow}
       />
+
+      {/* ── Analytics ─────────────────────────────────────────────────── */}
+      <AnalyticsCard creatorAddress={profile.address} />
 
       {/* ── Post list ──────────────────────────────────────────────────── */}
       <section>

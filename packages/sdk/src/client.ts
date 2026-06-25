@@ -1,8 +1,34 @@
-import { NotFoundError } from "./errors";
+import {
+  rpc,
+  Contract,
+  nativeToScVal,
+  scValToNative,
+  TransactionBuilder,
+  Account,
+  Keypair,
+  xdr,
+} from "@stellar/stellar-sdk";
+import { NotFoundError, mapError } from "./errors";
 import { GeneratedLinkoraClient } from "./generated/client";
 import type { Profile, Post, Pool, GovParameter, GovProposal } from "./types";
 
 const DEFAULT_NETWORK = "Test SDF Network ; September 2015";
+const DEFAULT_TIMEOUT = 30;
+
+const { isSimulationError, isSimulationSuccess } = rpc.Api;
+
+function scvAddress(value: string): xdr.ScVal {
+  return nativeToScVal(value, { type: "address" });
+}
+function scvString(value: string): xdr.ScVal {
+  return nativeToScVal(value);
+}
+function scvU32(value: number): xdr.ScVal {
+  return nativeToScVal(value, { type: "u32" });
+}
+function scvI128(value: number | bigint): xdr.ScVal {
+  return nativeToScVal(value, { type: "i128" });
+}
 
 /**
  * Configuration options for the SDK client
@@ -42,12 +68,21 @@ export interface SetProfileWithNewTokenParams {
  * error handling, and type conversions (e.g. bigint ↔ number).
  */
 export class LinkoraClient extends GeneratedLinkoraClient {
+  private tokenFactoryId?: string;
+  private readonly _rpcUrl: string;
+  private readonly _networkPassphrase: string;
+  private readonly _contractId: string;
+
   constructor(config: ClientConfig) {
     super({
       contractId: config.contractId,
       rpcUrl: config.rpcUrl,
       networkPassphrase: config.networkPassphrase || DEFAULT_NETWORK,
     });
+    this._contractId = config.contractId;
+    this.tokenFactoryId = config.tokenFactoryId;
+    this._rpcUrl = config.rpcUrl;
+    this._networkPassphrase = config.networkPassphrase || DEFAULT_NETWORK;
   }
 
   // ── Override read methods with error handling ─────────────────────────────
@@ -61,12 +96,11 @@ export class LinkoraClient extends GeneratedLinkoraClient {
     }
   }
 
-  async getProfileCount(): Promise<number> {
-    const val = await super.getProfileCount();
-    return Number(val);
+  async getProfileCount(): Promise<bigint> {
+    return super.getProfileCount();
   }
 
-  async getPost(postId: number): Promise<Post | null> {
+  async getPost(postId: number | bigint): Promise<Post | null> {
     try {
       return await super.getPost(BigInt(postId));
     } catch (e) {
@@ -75,14 +109,12 @@ export class LinkoraClient extends GeneratedLinkoraClient {
     }
   }
 
-  async getPostCount(): Promise<number> {
-    const val = await super.getPostCount();
-    return Number(val);
+  async getPostCount(): Promise<bigint> {
+    return super.getPostCount();
   }
 
-  async getLikeCount(postId: number): Promise<number> {
-    const val = await super.getLikeCount(BigInt(postId));
-    return Number(val);
+  async getLikeCount(postId: number | bigint): Promise<bigint> {
+    return super.getLikeCount(BigInt(postId));
   }
 
   async getTreasury(): Promise<string | null> {
@@ -133,37 +165,37 @@ export class LinkoraClient extends GeneratedLinkoraClient {
     return super.govPropose(proposer, parameter, BigInt(newValue), newAddress);
   }
 
-  govVote(voter: string, proposalId: number, support: boolean): string {
+  govVote(voter: string, proposalId: number | bigint, support: boolean): string {
     return super.govVote(voter, BigInt(proposalId), support);
   }
 
-  govExecute(proposalId: number): string {
+  govExecute(proposalId: number | bigint): string {
     return super.govExecute(BigInt(proposalId));
   }
 
-  govGetProposal(proposalId: number): Promise<GovProposal> {
+  govGetProposal(proposalId: number | bigint): Promise<GovProposal> {
     return super.govGetProposal(BigInt(proposalId));
   }
 
-  effectiveQuorum(proposalId: number): Promise<number> {
+  effectiveQuorum(proposalId: number | bigint): Promise<number> {
     return super.effectiveQuorum(BigInt(proposalId));
   }
 
-  govVeto(signers: string[], poolId: string, proposalId: number): string {
+  govVeto(signers: string[], poolId: string, proposalId: number | bigint): string {
     return super.govVeto(signers, poolId, BigInt(proposalId));
   }
 
   // ── Override write methods with number→bigint conversions ─────────────────
 
-  deletePost(author: string, postId: number): string {
+  deletePost(author: string, postId: number | bigint): string {
     return super.deletePost(author, BigInt(postId));
   }
 
-  likePost(user: string, postId: number): string {
+  likePost(user: string, postId: number | bigint): string {
     return super.likePost(user, BigInt(postId));
   }
 
-  tip(tipper: string, postId: number, token: string, amount: number | bigint): string {
+  tip(tipper: string, postId: number | bigint, token: string, amount: number | bigint): string {
     return super.tip(tipper, BigInt(postId), token, BigInt(amount));
   }
 
@@ -178,6 +210,40 @@ export class LinkoraClient extends GeneratedLinkoraClient {
     recipient: string
   ): string {
     return super.poolWithdraw(signers, poolId, BigInt(amount), recipient);
+  }
+
+  // ── Analytics Oracle ────────────────────────────────────────────────────────
+
+  /**
+   * Build a transaction envelope for `verify_analytics_attestation`.
+   * Submitting this transaction anchors the attestation on-chain and emits
+   * `AttestationVerifiedEvent`.
+   *
+   * @param oracleName - Symbol name of the oracle (e.g. "default")
+   * @param reportCbor - Raw CBOR bytes of the analytics report
+   * @param signature  - 64-byte Ed25519 signature over sha256(reportCbor)
+   * @param creator    - Creator address represented by the report
+   * @param windowStart - Start ledger for the report window
+   * @param windowEnd  - End ledger for the report window
+   */
+  verifyAnalyticsAttestation(
+    oracleName: string,
+    reportCbor: Uint8Array,
+    signature: Uint8Array,
+    creator: string,
+    windowStart: number,
+    windowEnd: number
+  ): string {
+    return this.buildTxForContract(
+      this._contractId,
+      "verify_analytics_attestation",
+      nativeToScVal(oracleName, { type: "symbol" }),
+      nativeToScVal(Buffer.from(reportCbor), { type: "bytes" }),
+      nativeToScVal(Buffer.from(signature), { type: "bytes" }),
+      scvAddress(creator),
+      nativeToScVal(windowStart, { type: "u64" }),
+      nativeToScVal(windowEnd, { type: "u64" })
+    );
   }
 
   // ── Token Factory Methods ────────────────────────────────────────────────────
@@ -272,7 +338,7 @@ export class LinkoraClient extends GeneratedLinkoraClient {
     const account = new Account(source.publicKey(), "0");
     const tx = new TransactionBuilder(account, {
       fee: "100",
-      networkPassphrase: this.networkPassphrase,
+      networkPassphrase: this._networkPassphrase,
     })
       .addOperation(op)
       .setTimeout(DEFAULT_TIMEOUT)
@@ -286,7 +352,7 @@ export class LinkoraClient extends GeneratedLinkoraClient {
     method: string,
     ...args: xdr.ScVal[]
   ): Promise<xdr.ScVal | null> {
-    const server = new rpc.Server(this.rpcUrl);
+    const server = new rpc.Server(this._rpcUrl);
     const contract = new Contract(contractId);
     const op = contract.call(method, ...args);
 
@@ -294,7 +360,7 @@ export class LinkoraClient extends GeneratedLinkoraClient {
     const account = new Account(source.publicKey(), "0");
     const tx = new TransactionBuilder(account, {
       fee: "100",
-      networkPassphrase: this.networkPassphrase,
+      networkPassphrase: this._networkPassphrase,
     })
       .addOperation(op)
       .setTimeout(DEFAULT_TIMEOUT)

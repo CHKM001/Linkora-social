@@ -194,7 +194,7 @@ export type LinkoraEvent =
  * The event name in topics[0] is matched against known event types.
  * Topic fields are read from topics[1..N], and data fields from the event value.
  */
-export function parseContractEvent(event: rpc.Api.Event): LinkoraEvent | null {
+export function parseContractEvent(event: rpc.Api.EventResponse): LinkoraEvent | null {
   if (!event.topic || event.topic.length < 1) return null;
   const topic0 = event.topic[0];
   const eventType = scValToNative(topic0);
