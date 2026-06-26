@@ -27,12 +27,10 @@ export function createPostsRouter(db: Database): Router {
       return;
     }
     if (cursor !== undefined && (!Number.isFinite(cursor) || cursor < 0)) {
-      res
-        .status(400)
-        .json({
-          error: "cursor must be a non-negative number (unix timestamp)",
-          code: "INVALID_QUERY",
-        });
+      res.status(400).json({
+        error: "cursor must be a non-negative number (unix timestamp)",
+        code: "INVALID_QUERY",
+      });
       return;
     }
 
@@ -69,6 +67,35 @@ export function createPostsRouter(db: Database): Router {
     }
 
     res.json(post);
+  });
+
+  /**
+   * GET /posts/:id/reports
+   * Returns all reports for a specific post.
+   */
+  router.get("/:id/reports", async (req: Request, res: Response): Promise<void> => {
+    const rawId = req.params.id;
+
+    let postId: bigint;
+    try {
+      postId = BigInt(rawId);
+      if (postId < BigInt(0)) throw new Error();
+    } catch {
+      res.status(400).json({ error: "id must be a non-negative integer", code: "INVALID_ID" });
+      return;
+    }
+
+    try {
+      const reports = await db.getPostReports(postId);
+      res.json({
+        post_id: postId.toString(),
+        reports,
+        total: reports.length,
+      });
+    } catch (error) {
+      console.error(`Error fetching reports for post ${postId}:`, error);
+      res.status(500).json({ error: "Failed to fetch reports", code: "INTERNAL_ERROR" });
+    }
   });
 
   return router;

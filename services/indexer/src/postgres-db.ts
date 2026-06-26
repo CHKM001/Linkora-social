@@ -489,4 +489,79 @@ export class PostgresDatabase implements Database {
       [admin, ledger, pool_id]
     );
   }
+
+  // ───────────────────────────────── Reports ───────────────────────────────────
+
+  async insertReport(report: import("./db").Report): Promise<void> {
+    await this.pool.query(
+      `
+      INSERT INTO reports (post_id, reporter_address, reason, status)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (post_id, reporter_address) WHERE status = 'pending' DO NOTHING
+      `,
+      [
+        report.post_id.toString(),
+        report.reporter_address,
+        report.reason,
+        report.status || "pending",
+      ]
+    );
+  }
+
+  async updateReportStatus(
+    post_id: bigint,
+    reporter_address: string,
+    status: "dismissed" | "action_taken",
+    moderator_address?: string,
+    moderator_notes?: string
+  ): Promise<void> {
+    const query = `
+      UPDATE reports
+      SET status = $1,
+          moderator_address = $2,
+          moderator_notes = $3
+      WHERE post_id = $4 AND reporter_address = $5 AND status = 'pending'
+    `;
+
+    await this.pool.query(query, [
+      status,
+      moderator_address || null,
+      moderator_notes || null,
+      post_id.toString(),
+      reporter_address,
+    ]);
+  }
+
+  async getPostReports(post_id: bigint): Promise<import("./db").Report[]> {
+    const res = await this.pool.query(
+      `
+      SELECT
+        id,
+        post_id,
+        reporter_address,
+        reason,
+        status,
+        moderator_address,
+        moderator_notes,
+        created_at,
+        updated_at
+      FROM reports
+      WHERE post_id = $1
+      ORDER BY created_at DESC
+      `,
+      [post_id.toString()]
+    );
+
+    return res.rows.map((row) => ({
+      id: row.id,
+      post_id: BigInt(row.post_id),
+      reporter_address: row.reporter_address,
+      reason: row.reason,
+      status: row.status,
+      moderator_address: row.moderator_address,
+      moderator_notes: row.moderator_notes,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }));
+  }
 }
