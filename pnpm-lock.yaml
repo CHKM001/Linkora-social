@@ -52,6 +52,9 @@ importers:
       expo:
         specifier: ^49.0.23
         version: 49.0.23(@babel/core@7.29.7)
+      expo-haptics:
+        specifier: ~12.4.0
+        version: 12.4.0(expo@49.0.23(@babel/core@7.29.7))
       expo-notifications:
         specifier: ~0.20.1
         version: 0.20.1(expo@49.0.23(@babel/core@7.29.7))
@@ -6982,6 +6985,14 @@ packages:
       expo: "*"
       react: "*"
       react-native: "*"
+
+  expo-haptics@12.4.0:
+    resolution:
+      {
+        integrity: sha512-eELhZOO64oJa6AtEUxosatjSENE/tQgF2rVJxDsvRdx8Vgd3uFC+FRoM3nbMVJkxDgAaP3EKOPT1zVM41sNurw==,
+      }
+    peerDependencies:
+      expo: "*"
 
   expo-keep-awake@12.3.0:
     resolution:
@@ -19060,6 +19071,10 @@ snapshots:
       react-native: 0.72.17(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(react@18.3.1)
     transitivePeerDependencies:
       - react-dom
+
+  expo-haptics@12.4.0(expo@49.0.23(@babel/core@7.29.7)):
+    dependencies:
+      expo: 49.0.23(@babel/core@7.29.7)
 
   expo-keep-awake@12.3.0(expo@49.0.23(@babel/core@7.29.7)):
     dependencies:

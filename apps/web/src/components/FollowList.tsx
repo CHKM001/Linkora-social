@@ -16,7 +16,7 @@ interface FollowListProps {
   type: "followers" | "following";
 }
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 50;
 
 function getBlockieSvg(address: string) {
   let hash = 0;
@@ -37,14 +37,15 @@ export function FollowList({ address, type }: FollowListProps) {
   const [users, setUsers] = useState<FollowUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [blockedList, setBlockedList] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
 
   const [, setTick] = useState(0);
 
-  const offsetRef = useRef(0);
   const loadingRef = useRef(false);
   const client = useRef<LinkoraClient | null>(null);
 
@@ -77,11 +78,12 @@ export function FollowList({ address, type }: FollowListProps) {
   }, []);
 
   const load = useCallback(
-    async (offset: number, replace: boolean) => {
+    async (pageNumber: number) => {
       if (loadingRef.current) return;
       loadingRef.current = true;
       setLoading(true);
       setError(null);
+      const offset = pageNumber * PAGE_SIZE;
 
       try {
         const res = await fetch(
@@ -92,12 +94,15 @@ export function FollowList({ address, type }: FollowListProps) {
         }
         const data = await res.json();
         const listField = type === "followers" ? data.followers : data.following;
+        const nextUsers = Array.isArray(listField) ? listField : [];
 
-        setUsers((prev) => (replace ? listField : [...prev, ...listField]));
-        setHasMore(data.has_more ?? listField.length >= PAGE_SIZE);
-        offsetRef.current = offset + listField.length;
+        setUsers(nextUsers);
+        setPage(pageNumber);
+        setTotal(Number(data.total ?? offset + nextUsers.length));
+        setHasMore(data.has_more ?? nextUsers.length >= PAGE_SIZE);
       } catch (err) {
         setError("Failed to load users. Please try again later.");
+        setHasMore(false);
       } finally {
         setLoading(false);
         loadingRef.current = false;
@@ -107,30 +112,20 @@ export function FollowList({ address, type }: FollowListProps) {
   );
 
   useEffect(() => {
-    offsetRef.current = 0;
-    load(0, true);
+    load(0);
   }, [load]);
 
-  const loadMore = useCallback(() => {
-    if (!loading && hasMore) {
-      load(offsetRef.current, false);
+  const goToPreviousPage = useCallback(() => {
+    if (!loading && page > 0) {
+      load(page - 1);
     }
-  }, [loading, hasMore, load]);
+  }, [load, loading, page]);
 
-  useEffect(() => {
-    if (!hasMore || loading) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          loadMore();
-        }
-      },
-      { threshold: 0.8 }
-    );
-    const target = document.getElementById("infinite-scroll-trigger");
-    if (target) observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasMore, loading, loadMore]);
+  const goToNextPage = useCallback(() => {
+    if (!loading && hasMore) {
+      load(page + 1);
+    }
+  }, [hasMore, load, loading, page]);
 
   const handleToggleFollow = async (targetUser: FollowUser) => {
     if (!currentUser) {
@@ -171,6 +166,7 @@ export function FollowList({ address, type }: FollowListProps) {
     }
     return true;
   });
+  const showPagination = total > PAGE_SIZE || page > 0 || hasMore;
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-xl">
@@ -200,6 +196,12 @@ export function FollowList({ address, type }: FollowListProps) {
       {visibleUsers.length === 0 && !loading && (
         <div className="text-center p-8 bg-gray-50 border border-gray-200 rounded-2xl">
           <p className="text-gray-500">No accounts found.</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
         </div>
       )}
 
@@ -276,7 +278,32 @@ export function FollowList({ address, type }: FollowListProps) {
         </div>
       )}
 
-      {hasMore && !loading && <div id="infinite-scroll-trigger" className="h-1 my-2" />}
+      {showPagination && (
+        <nav
+          className="mt-6 flex items-center justify-between gap-3"
+          aria-label={`${type === "followers" ? "Followers" : "Following"} pagination`}
+        >
+          <button
+            type="button"
+            onClick={goToPreviousPage}
+            disabled={loading || page === 0}
+            className="min-w-[88px] rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Prev
+          </button>
+          <span className="text-sm font-semibold text-gray-700" aria-live="polite">
+            Page {page + 1}
+          </span>
+          <button
+            type="button"
+            onClick={goToNextPage}
+            disabled={loading || !hasMore}
+            className="min-w-[88px] rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Next
+          </button>
+        </nav>
+      )}
     </div>
   );
 }
