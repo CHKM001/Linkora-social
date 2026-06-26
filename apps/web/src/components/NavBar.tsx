@@ -39,12 +39,31 @@ export function NavBar() {
         {/* Right side */}
         <div className="flex items-center gap-3">
           {connected && (
-            <Link
-              href="/notifications"
-              aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
-              className="relative rounded-lg p-1.5 text-[var(--text-muted)] hover:text-violet-400 transition-colors"
-              data-testid="notifications-bell"
-            >
+            <>
+              <Link
+                href="/governance"
+                className="rounded-lg p-1.5 text-[var(--text-muted)] hover:text-violet-400 transition-colors"
+                aria-label="Governance"
+                data-testid="governance-link"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z" />
+                </svg>
+              </Link>
+              <Link
+                href="/notifications"
+                aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+                className="relative rounded-lg p-1.5 text-[var(--text-muted)] hover:text-violet-400 transition-colors"
+                data-testid="notifications-bell"
+              >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
