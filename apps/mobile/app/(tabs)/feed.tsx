@@ -58,7 +58,7 @@ export default function FeedScreen() {
   }
 
   if (error && posts.length === 0) {
-    return <ErrorState message={error} onRetry={refresh} />;
+    return <ErrorState message="Could not load posts" onRetry={refresh} />;
   }
 
   return (
