@@ -4,5 +4,15 @@ export * from "./errors";
 export * from "./credentials";
 export * from "./mini-apps/validateManifest";
 export * from "./generated/events";
+export * from "./events/cursor";
+export * from "./events/subscriber";
+export type {
+  FollowEvent,
+  LikePostEvent as LikeEvent,
+  TipEvent,
+  LinkoraEvent as SubscriberLinkoraEvent,
+} from "./events/types";
 export * as dm from "./dm";
-export * from "./signers";
+export * from "./dm";
+export * from "./signers/freighter";
+export * from "./queue";

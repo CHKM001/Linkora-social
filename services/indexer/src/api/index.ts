@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import { Pool as PgPool } from "pg";
 import { Database } from "../db";
 import { logger } from "../logger";
-import { rateLimitRead, rateLimitWrite } from "../middleware/rateLimit";
+import { rateLimit as apiLimiter, rateLimitWrite } from "../middleware/rateLimit";
 import { requireStellarAuth } from "../middleware/stellarAuth";
 import { createProfilesRouter } from "./routes/profiles";
 import { createPostsRouter } from "./routes/posts";
@@ -10,7 +10,10 @@ import { createFollowsRouter } from "./routes/follows";
 import { createPoolsRouter } from "./routes/pools";
 import { createStateRootRouter } from "./routes/stateRoot";
 import { createNotificationsRouter } from "./routes/notifications";
+import { createGovernanceRouter } from "./routes/governance";
+import { createUsersRouter } from "./routes/users";
 import { isFenced } from "../gossip";
+import { getBackfillState } from "../stream";
 import {
   defaultNotificationService,
   NotificationService,
@@ -25,7 +28,22 @@ export function createApp(db: Database, pg?: PgPool): express.Application {
   app.use(express.json());
 
   app.get("/health", (_req: Request, res: Response): void => {
-    res.json({ status: "ok" });
+    const backfill = getBackfillState();
+    res.json({
+      status: "ok",
+      backfill: backfill.active
+        ? {
+            active: true,
+            fromLedger: backfill.fromLedger,
+            toLedger: backfill.toLedger,
+            processedLedgers: backfill.processedLedgers,
+            totalLedgers:
+              backfill.toLedger !== undefined && backfill.fromLedger !== undefined
+                ? backfill.toLedger - backfill.fromLedger + 1
+                : undefined,
+          }
+        : { active: false },
+    });
   });
 
   // Apply rate limiting to all /api routes.
@@ -47,6 +65,8 @@ export function createApp(db: Database, pg?: PgPool): express.Application {
   app.use("/api/posts", createPostsRouter(db));
   app.use("/api/follows", createFollowsRouter(db));
   app.use("/api/pools", createPoolsRouter(db));
+  app.use("/api/governance", createGovernanceRouter(db));
+  app.use("/api/users", createUsersRouter(db));
 
   const notificationService = pg
     ? new NotificationService({ deviceTokenStore: new PostgresDeviceTokenStore(pg) })
@@ -57,82 +77,6 @@ export function createApp(db: Database, pg?: PgPool): express.Application {
   if (pg) {
     app.use("/api/state-root", createStateRootRouter(pg));
   }
-
-  // ── Search endpoint ──────────────────────────────────────────────────────────
-
-  interface SearchQuery {
-    query: string;
-    limit?: number;
-    offset?: number;
-  }
-
-  interface Post {
-    id: number;
-    author: string;
-    content: string;
-    tip_total: string;
-    timestamp: number;
-  }
-
-  interface SearchResponse {
-    posts: Post[];
-    total: number;
-    has_more: boolean;
-  }
-
-  interface ErrorResponse {
-    error: string;
-    code: string;
-  }
-
-  const MAX_LIMIT = 100;
-  const DEFAULT_LIMIT = 20;
-  const DEFAULT_OFFSET = 0;
-
-  // Override: search uses read-rate-limit even though it's POST
-  app.post(
-    "/api/search/posts",
-    rateLimitRead,
-    (req: Request, res: Response<SearchResponse | ErrorResponse>): void => {
-      const body = req.body as Partial<SearchQuery>;
-
-      if (
-        body.query === undefined ||
-        body.query === null ||
-        typeof body.query !== "string" ||
-        body.query.trim() === ""
-      ) {
-        res.status(400).json({ error: "query is required", code: "INVALID_QUERY" });
-        return;
-      }
-
-      const limit = body.limit !== undefined ? Number(body.limit) : DEFAULT_LIMIT;
-      const offset = body.offset !== undefined ? Number(body.offset) : DEFAULT_OFFSET;
-
-      if (!Number.isInteger(limit) || limit < 1) {
-        res.status(400).json({ error: "limit must be a positive integer", code: "INVALID_QUERY" });
-        return;
-      }
-
-      if (limit > MAX_LIMIT) {
-        res.status(400).json({
-          error: `limit cannot exceed ${MAX_LIMIT}`,
-          code: "LIMIT_EXCEEDED",
-        });
-        return;
-      }
-
-      if (!Number.isInteger(offset) || offset < 0) {
-        res
-          .status(400)
-          .json({ error: "offset must be a non-negative integer", code: "INVALID_QUERY" });
-        return;
-      }
-
-      // TODO: integrate with the search database.
-      res.json({ posts: [], total: 0, has_more: false });
-    }
-  );
 
   // ── DM relay endpoint (write — requires Stellar auth + write rate limit) ───
 
@@ -195,12 +139,10 @@ if (require.main === module) {
   const PORT = parseInt(process.env.PORT ?? "3001", 10);
   const databaseUrl = process.env.DATABASE_URL;
   const pg = databaseUrl ? new PgPool({ connectionString: databaseUrl }) : undefined;
-  const apiApp = pg ? createApp(new PostgresDatabase(pg), pg) : app;
+  const apiApp = pg ? createApp(new PostgresDatabase(pg), pg) : createApp(_stub);
 
   apiApp.listen(PORT, () => {
     console.log(`Indexer API listening on port ${PORT}`);
-    console.log(
-      `Rate limit: ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW_MS / 1000}s per IP`
-    );
+    console.log(`Rate limit enabled: read limit is 60 RPM, write limit is 10 RPM`);
   });
 }

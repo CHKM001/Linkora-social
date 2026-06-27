@@ -1,7 +1,43 @@
 import { Signer } from "../types";
 
+declare const window: undefined | object;
+
 interface LedgerTransport {
   close(): Promise<void>;
+}
+
+interface LedgerWebHidTransport {
+  create(): Promise<LedgerTransport>;
+}
+
+interface LedgerNodeHidTransport {
+  list(): Promise<unknown[]>;
+  open(device: unknown): Promise<LedgerTransport>;
+}
+
+interface StellarLedgerPublicKey {
+  publicKey?: string;
+  rawPublicKey: Buffer;
+}
+
+interface StellarLedgerApp {
+  getPublicKey(derivationPath: string): Promise<StellarLedgerPublicKey>;
+  signTransaction(derivationPath: string, txBytes: Buffer): Promise<{ signature: Buffer }>;
+}
+
+type StellarLedgerAppConstructor = new (transport: LedgerTransport) => StellarLedgerApp;
+
+function defaultExport<T>(module: unknown): T {
+  const first =
+    module && typeof module === "object" && "default" in module
+      ? (module as { default: unknown }).default
+      : module;
+
+  return (
+    first && typeof first === "object" && "default" in first
+      ? (first as { default: T }).default
+      : first
+  ) as T;
 }
 
 /**
@@ -26,7 +62,9 @@ export class LedgerSigner implements Signer {
 
     if (typeof window !== "undefined") {
       try {
-        const { default: TransportWebHID } = await import("@ledgerhq/hw-transport-webhid");
+        const TransportWebHID = defaultExport<LedgerWebHidTransport>(
+          await import("@ledgerhq/hw-transport-webhid")
+        );
         this.transport = await TransportWebHID.create();
       } catch (error) {
         throw new Error(
@@ -35,7 +73,9 @@ export class LedgerSigner implements Signer {
       }
     } else {
       try {
-        const { default: TransportNodeHID } = await import("@ledgerhq/hw-transport-node-hid");
+        const TransportNodeHID = defaultExport<LedgerNodeHidTransport>(
+          await import("@ledgerhq/hw-transport-node-hid")
+        );
         const devices = await TransportNodeHID.list();
         if (devices.length === 0) {
           throw new Error("No Ledger device found. Please connect your Ledger device.");
@@ -63,12 +103,20 @@ export class LedgerSigner implements Signer {
 
     try {
       const transport = await this.getTransport();
-      const { default: StrApp } = await import("@ledgerhq/hw-app-str");
+      const StrApp = defaultExport<StellarLedgerAppConstructor>(
+        await import("@ledgerhq/hw-app-str")
+      );
       const app = new StrApp(transport);
 
       const result = await app.getPublicKey(derivationPath);
-      this.publicKeyCache.set(derivationPath, result.publicKey);
-      return result.publicKey;
+      const publicKey =
+        "publicKey" in result
+          ? String(result.publicKey)
+          : (await import("@stellar/stellar-sdk")).StrKey.encodeEd25519PublicKey(
+              result.rawPublicKey
+            );
+      this.publicKeyCache.set(derivationPath, publicKey);
+      return publicKey;
     } catch (error) {
       throw new Error(
         `Failed to get public key from Ledger: ${error instanceof Error ? error.message : String(error)}`
@@ -86,11 +134,20 @@ export class LedgerSigner implements Signer {
    * @param tx Transaction object or base64 XDR string
    * @param derivationPath Stellar BIP-44 derivation path (default: "m/44'/148'/0'")
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async signTransaction(tx: any, derivationPath: string = "m/44'/148'/0'"): Promise<any> {
+  async signTransaction(
+    tx:
+      | string
+      | {
+          toEnvelope(): { toXDR(format: "base64"): string };
+          signatures: unknown[];
+        },
+    derivationPath: string = "m/44'/148'/0'"
+  ): Promise<unknown> {
     try {
       const transport = await this.getTransport();
-      const { default: StrApp } = await import("@ledgerhq/hw-app-str");
+      const StrApp = defaultExport<StellarLedgerAppConstructor>(
+        await import("@ledgerhq/hw-app-str")
+      );
       const app = new StrApp(transport);
 
       const xdrString = typeof tx === "string" ? tx : tx.toEnvelope().toXDR("base64");
