@@ -65,6 +65,7 @@ const TIP_COOLDOWN_WINDOW: Symbol = symbol_short!("TIP_CD_W");
 const REGISTERED_USERS: Symbol = symbol_short!("R_USERS");
 const RENT_RATE_BPS_KEY: Symbol = symbol_short!("RENT_BPS");
 const MODERATION_SLASH_BPS: Symbol = symbol_short!("MOD_SL_B");
+const CONTRACT_STATE: Symbol = symbol_short!("CT_STATE");
 
 // ── TTL Constants ─────────────────────────────────────────────────────────────
 //
@@ -120,6 +121,15 @@ pub struct Pool {
     pub balance: i128,
     pub admins: Vec<Address>,
     pub threshold: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ContractState {
+    /// Current contract schema / code version for migration tracking.
+    pub version: u32,
+    /// Last known implementation hash. Updated on each successful upgrade.
+    pub implementation_wasm_hash: Option<BytesN<32>>,
 }
 
 #[contracttype]
@@ -611,6 +621,13 @@ impl LinkoraContract {
             .instance()
             .set(&TIP_COOLDOWN_WINDOW, &TIP_COOLDOWN_LEDGERS);
         env.storage().instance().set(&MODERATION_SLASH_BPS, &0u32);
+        env.storage().instance().set(
+            &CONTRACT_STATE,
+            &ContractState {
+                version: 1,
+                implementation_wasm_hash: None,
+            },
+        );
     }
 
     // ── Profiles ──────────────────────────────────────────────────────────────
