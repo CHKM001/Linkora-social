@@ -8,6 +8,7 @@ import { OptimisticStore, useOptimisticLike, useOptimisticTip } from "@/lib/opti
 import { LinkoraClient } from "../../../../../packages/sdk/src/client";
 import { validateAmount, validateStellarAddress } from "@/lib/validate";
 import { FieldError } from "@/components/forms/FieldError";
+import { AnimatedList } from "@/components/AnimatedList";
 
 /* ────────────────────────────────────────────────────────────────────────── */
 /*  Config & Constants                                                       */
