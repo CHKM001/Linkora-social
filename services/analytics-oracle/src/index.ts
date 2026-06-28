@@ -143,6 +143,53 @@ async function scheduleLoop(currentLedger: bigint): Promise<void> {
 // ── REST API ──────────────────────────────────────────────────────────────────
 
 const app = express();
+const SERVICE_VERSION = process.env["npm_package_version"] ?? "0.1.0";
+const COMMIT_SHA = process.env["COMMIT_SHA"] ?? "unknown";
+const startTime = Date.now();
+
+// ── Health endpoints ──────────────────────────────────────────────────────────
+
+app.get("/health", async (_req, res) => {
+  const uptime = Math.floor((Date.now() - startTime) / 1000);
+
+  let dbStatus = "disconnected";
+  try { await db.query("SELECT 1"); dbStatus = "connected"; } catch { /* */ }
+
+  let rpcStatus = "unreachable";
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3000);
+    await fetch(SOROBAN_RPC_URL, {
+      method: "POST", signal: ctrl.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getLatestLedger", params: [] }),
+    }).finally(() => clearTimeout(t));
+    rpcStatus = "reachable";
+  } catch { /* */ }
+
+  const ok = dbStatus === "connected" && rpcStatus === "reachable";
+  res.status(ok ? 200 : 503).json({
+    status: ok ? "ok" : "degraded",
+    uptime,
+    version: SERVICE_VERSION,
+    commit: COMMIT_SHA,
+    db: dbStatus,
+    rpc: rpcStatus,
+  });
+});
+
+app.get("/health/ready", async (_req, res) => {
+  try {
+    await db.query("SELECT 1");
+    res.json({ status: "ready" });
+  } catch {
+    res.status(503).json({ status: "not ready", reason: "db unavailable" });
+  }
+});
+
+app.get("/health/live", (_req, res) => {
+  res.json({ status: "live" });
+});
 
 const RATE_LIMIT_RPM = parseInt(process.env.RATE_LIMIT_RPM || "100", 10);
 
